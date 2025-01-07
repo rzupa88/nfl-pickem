@@ -6,6 +6,7 @@ import Pickem from './pages/Pickem';
 import Leaderboard from './components/Leaderboard';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import AdminDashboard from './pages/AdminDashboard'; // Import the AdminDashboard
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
+        <Route path="/admin" element={<AdminDashboard />} /> {/* Admin Dashboard route */}
       </Routes>
     </Router>
   );

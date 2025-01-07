@@ -1,5 +1,5 @@
 import { collection, getDocs, query, where, doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../firebase'; // Adjust based on your Firebase configuration
+import { db } from '../firebase'; // Adjust based on your Firebase setup
 
 /**
  * Calculate scores for all users for a given week.
@@ -8,21 +8,21 @@ import { db } from '../firebase'; // Adjust based on your Firebase configuration
  */
 export const calculateScores = async (week) => {
   try {
-    // Step 1: Fetch results for the given week
+    // Step 1: Fetch game results for the given week
     const resultsCollection = collection(db, 'results');
     const resultsQuery = query(resultsCollection, where('week', '==', week));
     const resultsSnapshot = await getDocs(resultsQuery);
 
     if (resultsSnapshot.empty) {
       console.log(`No results found for week ${week}. Skipping scoring.`);
-      return; // Exit if no results are available
+      return;
     }
 
     // Map results by gameId
     const results = {};
     resultsSnapshot.forEach((doc) => {
       const data = doc.data();
-      results[data.gameId] = data.winner; // Map gameId to the winner
+      results[data.gameId] = data.winner;
     });
 
     console.log('Game Results:', results);
@@ -34,14 +34,14 @@ export const calculateScores = async (week) => {
 
     if (picksSnapshot.empty) {
       console.log(`No picks found for week ${week}. Skipping scoring.`);
-      return; // Exit if no picks are available
+      return;
     }
 
-    // Step 3: Calculate scores for each user
+    // Step 3: Process each user's picks and calculate scores
     picksSnapshot.forEach(async (doc) => {
-      const data = doc.data();
-      const userId = data.userId;
-      const userPicks = data.picks;
+      const pickData = doc.data();
+      const userId = pickData.userId;
+      const userPicks = pickData.picks;
 
       let weekScore = 0;
 
@@ -54,7 +54,7 @@ export const calculateScores = async (week) => {
 
       console.log(`User: ${userId}, Week ${week} Score: ${weekScore}`);
 
-      // Step 4: Update scores for the user
+      // Step 4: Update or create the user's score in the scores collection
       await updateUserScore(userId, week, weekScore);
     });
   } catch (error) {
@@ -63,15 +63,15 @@ export const calculateScores = async (week) => {
 };
 
 /**
- * Update a user's score in the Firestore `scores` collection.
+ * Update a user's score in Firestore.
  *
- * @param {string} userId - The ID of the user (Firebase Auth UID).
+ * @param {string} userId - The user ID from the picks collection.
  * @param {number} week - The week number for which the score is being updated.
  * @param {number} weekScore - The score the user earned for the week.
  */
 const updateUserScore = async (userId, week, weekScore) => {
   try {
-    const scoresRef = doc(db, 'scores', userId); // Reference to user's score document
+    const scoresRef = doc(db, 'scores', userId); // Use userId as the document ID in scores
     const docSnapshot = await getDoc(scoresRef);
 
     if (docSnapshot.exists()) {
