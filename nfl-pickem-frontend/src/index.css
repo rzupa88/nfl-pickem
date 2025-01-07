@@ -1,0 +1,14 @@
+/* Add Tailwind's base styles first */
+@tailwind base;
+
+/* Add Tailwind's component styles */
+@tailwind components;
+
+/* Add Tailwind's utility styles */
+@tailwind utilities;
+
+/* Custom styles (if needed) can go here */
+body {
+  font-family: 'Inter', sans-serif; /* Example: Set default font family */
+  background-color: #f3f4f6; /* Example: Set default background */
+}
