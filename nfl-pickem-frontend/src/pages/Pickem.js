@@ -1,178 +1,165 @@
-import React, { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, setDoc, doc } from 'firebase/firestore';
-import { auth, db } from '../firebase';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { db } from '../firebase';
+import { doc, setDoc, getDocs, query, collection, where } from 'firebase/firestore';
+import { auth } from '../firebase';
 
-function Pickem() {
+const Pickem = () => {
   const [games, setGames] = useState([]);
   const [picks, setPicks] = useState({});
+  const [week] = useState(1); // Week is fixed for now
   const [message, setMessage] = useState('');
-  const navigate = useNavigate();
-  const currentWeek = 1;
+  const topRef = useRef(null); // Ref to scroll to the top
 
-  const weekLabels = {
+  // Map week numbers to round names
+  const roundNames = {
     1: 'Wild Card Round',
     2: 'Divisional Round',
-    3: 'Conference Championship',
-    4: 'Super Bowl',
+    3: 'Conference Championships',
+    4: 'Superbowl',
   };
 
-  useEffect(() => {
-    const user = auth.currentUser;
-    if (!user) {
-      navigate('/login');
-    }
-  }, [navigate]);
+  const fetchGames = useCallback(async () => {
+    try {
+      const gamesQuery = query(collection(db, 'games'), where('week', '==', week));
+      const gamesSnapshot = await getDocs(gamesQuery);
 
-  useEffect(() => {
-    const fetchGames = async () => {
-      try {
-        const gamesCollection = collection(db, 'games');
-        const gamesQuery = query(gamesCollection, where('week', '==', currentWeek));
-        console.log('Fetching games for week:', currentWeek);
-
-        const querySnapshot = await getDocs(gamesQuery);
-
-        if (querySnapshot.empty) {
-          console.warn('No matchups found for the current week.');
-          setMessage('No matchups available for this week.');
-          return;
-        }
-
-        const gamesData = querySnapshot.docs.map((doc) => doc.data());
+      if (gamesSnapshot.empty) {
+        setMessage('No games available for the current round.');
+        setGames([]);
+      } else {
+        const gamesData = [];
+        gamesSnapshot.forEach((doc) => gamesData.push(doc.data()));
         setGames(gamesData);
-      } catch (error) {
-        console.error('Error fetching games:', error);
-
-        if (error.code === 'permission-denied') {
-          setMessage('You do not have permission to access the games.');
-        } else {
-          setMessage('Error loading games. Please try again later.');
-        }
       }
-    };
+    } catch (error) {
+      console.error('Error fetching games:', error);
+      setMessage('Error loading games. Please try again later.');
+    }
+  }, [week]);
 
+  useEffect(() => {
     fetchGames();
-  }, [currentWeek]);
+  }, [fetchGames]);
 
   const handlePick = (gameId, team) => {
-    setPicks({ ...picks, [gameId]: team });
+    setPicks((prevPicks) => ({
+      ...prevPicks,
+      [gameId]: team,
+    }));
   };
 
   const handleSubmit = async () => {
     try {
-      const user = auth.currentUser;
-      if (!user) {
-        setMessage('You must be logged in to submit picks.');
-        console.error('Error: User not logged in.');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
+      console.log('Submitting picks...');
+      console.log('Current User:', auth.currentUser);
+
+      if (!auth.currentUser) {
+        throw new Error('User is not authenticated.');
       }
 
-      if (Object.keys(picks).length === 0) {
-        setMessage('You must make at least one pick.');
-        console.error('Error: No picks made.');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-
-      console.log('User ID:', user.uid);
-      console.log('Current Picks:', picks);
-
-      const docRef = doc(db, 'picks', `${user.uid}_week_${currentWeek}`);
-      const dataToStore = {
-        userId: user.uid,
-        week: currentWeek,
+      const picksRef = doc(db, 'picks', auth.currentUser.uid);
+      const newPicks = {
+        userId: auth.currentUser.uid,
+        week: week,
         picks: picks,
-        timestamp: new Date(),
       };
 
-      console.log('Preparing to write data to Firestore:', dataToStore);
+      console.log('New picks data:', newPicks);
+      await setDoc(picksRef, newPicks, { merge: true });
 
-      await setDoc(docRef, dataToStore);
-
+      console.log('Picks submitted successfully!');
       setMessage('Picks submitted successfully!');
-      console.log('Picks successfully stored in Firestore:', dataToStore);
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err) {
-      console.error('Error submitting picks:', err);
+    } catch (error) {
+      console.error('Error submitting picks:', error);
       setMessage('Error submitting picks. Please try again.');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally {
+      // Scroll back to the top after submission
+      topRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <h1 className="text-3xl font-bold text-center text-blue-700 mb-6">Pick Your Winners</h1>
-      <h2 className="text-center text-lg text-gray-600 mb-4">
-        {weekLabels[currentWeek] || `Week ${currentWeek}`}
-      </h2>
+    <div className="p-6 bg-gray-100 min-h-screen">
+      {/* Top reference for scrolling */}
+      <div ref={topRef}></div>
+
+      <h1 className="text-3xl font-bold text-center mb-6">
+        Pickem - {roundNames[week] || `Week ${week}`}
+      </h1>
+
       {message && (
-        <p
-          className={`text-center mb-4 ${
-            message.toLowerCase().includes('error') || message.toLowerCase().includes('try again')
-              ? 'text-red-500'
-              : 'text-green-500'
+        <div
+          className={`mt-4 px-4 py-2 rounded ${
+            message.includes('successfully')
+              ? 'bg-green-100 text-green-800'
+              : 'bg-red-100 text-red-800'
           }`}
         >
           {message}
-        </p>
+        </div>
       )}
-      <ul className="space-y-6">
-        {games.length === 0 && (
-          <p className="text-center text-gray-500">No games available for the current week.</p>
-        )}
-        {games.map((game) => (
-          <li
-            key={game.id}
-            className="flex flex-col bg-white shadow p-4 rounded-lg"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <img src={game.teamALogo} alt={game.teamA} className="w-12 h-12 object-contain" />
-                <span className="text-lg font-bold text-gray-800">{game.teamA}</span>
-              </div>
-              <span className="text-sm text-gray-600">vs</span>
-              <div className="flex items-center space-x-4">
-                <span className="text-lg font-bold text-gray-800">{game.teamB}</span>
-                <img src={game.teamBLogo} alt={game.teamB} className="w-12 h-12 object-contain" />
-              </div>
-            </div>
-            <div className="flex justify-between mt-2 text-gray-700">
-              <span>Spread: {game.spread}</span>
-              <span>O/U: {game.overUnder}</span>
-            </div>
-            <div className="mt-4 flex justify-between space-x-4">
+
+      <div className="mt-6">
+        {games.length > 0 ? (
+          games.map((game) => (
+            <div
+              key={game.id}
+              className="mb-6 p-4 border rounded-lg bg-white flex flex-col items-center text-center"
+            >
+              {/* Team A Button */}
               <button
                 onClick={() => handlePick(game.id, game.teamA)}
-                className={`px-4 py-2 text-white rounded-lg ${
-                  picks[game.id] === game.teamA ? 'bg-blue-500' : 'bg-gray-400'
-                } hover:bg-blue-600`}
+                className={`mb-2 p-2 w-full rounded-lg border flex items-center justify-center space-x-2 ${
+                  picks[game.id] === game.teamA ? 'bg-blue-500 text-white' : 'bg-gray-200'
+                }`}
               >
-                Pick {game.teamA}
+                <img
+                  src={game.teamALogo}
+                  alt={game.teamA}
+                  className="h-8 w-8 object-contain"
+                />
+                <span className="text-lg font-bold">{game.teamA}</span>
               </button>
+
+              {/* "vs." */}
+              <div className="text-sm text-gray-500 mb-2">vs.</div>
+
+              {/* Team B Button */}
               <button
                 onClick={() => handlePick(game.id, game.teamB)}
-                className={`px-4 py-2 text-white rounded-lg ${
-                  picks[game.id] === game.teamB ? 'bg-blue-500' : 'bg-gray-400'
-                } hover:bg-blue-600`}
+                className={`p-2 w-full rounded-lg border flex items-center justify-center space-x-2 ${
+                  picks[game.id] === game.teamB ? 'bg-blue-500 text-white' : 'bg-gray-200'
+                }`}
               >
-                Pick {game.teamB}
+                <img
+                  src={game.teamBLogo}
+                  alt={game.teamB}
+                  className="h-8 w-8 object-contain"
+                />
+                <span className="text-lg font-bold">{game.teamB}</span>
               </button>
+
+              {/* Spread and Over/Under */}
+              <div className="text-sm text-gray-600 mt-4">
+                Spread: {game.spread} | O/U: {game.overUnder}
+              </div>
             </div>
-          </li>
-        ))}
-      </ul>
-      <div className="text-center mt-8">
+          ))
+        ) : (
+          <p>No games available for this round.</p>
+        )}
+      </div>
+
+      {games.length > 0 && (
         <button
           onClick={handleSubmit}
-          className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600"
+          className="mt-6 w-full bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition"
         >
           Submit Picks
         </button>
-      </div>
+      )}
     </div>
   );
-}
+};
 
 export default Pickem;
